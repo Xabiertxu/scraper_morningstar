@@ -25,7 +25,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pandas openpyxl playwright lxml html5lib beautifulsoup4
-        playwright install --with-deps chromium # Instala el navegador virtual dentro de Ubuntu
+        playwright install --with-deps chromium
 
     - name: Ejecutar Scraper Real
       run: python scraper_morningstar.py
