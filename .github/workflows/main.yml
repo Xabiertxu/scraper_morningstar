@@ -1,13 +1,16 @@
 name: Automatizacion Morningstar Playwright
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 23 * * 1-5' # Se ejecuta de lunes a viernes a las 23:00 UTC
-  workflow_dispatch: # Permite ejecución manual
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-down: ubuntu-latest
 
     steps:
     - name: Clonar el repositorio
