@@ -1,0 +1,36 @@
+name: Automatizacion Morningstar Playwright
+
+on:
+  schedule:
+    - cron: '0 23 * * 1-5' # Se ejecuta de lunes a viernes a las 23:00 UTC
+  workflow_dispatch: # Permite ejecución manual
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clonar el repositorio
+      uses: actions/checkout@v3
+
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Instalar librerías y dependencias de navegador
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas openpyxl playwright lxml html5lib
+        playwright install --with-deps chromium # Instala el navegador virtual dentro de Ubuntu
+
+    - name: Ejecutar Scraper Real
+      run: python scraper_morningstar.py
+
+    - name: Guardar el archivo Excel en GitHub
+      run: |
+        git config --global user.name 'Morningstar Playwright Bot'
+        git config --global user.email 'bot@morningstar-scraper.com'
+        git add lista_completa_etfs_morningstar.xlsx
+        git commit -m "Actualización nativa de ETFs desde buscador Morningstar" || echo "No hay cambios hoy"
+        git push
