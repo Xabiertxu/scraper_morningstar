@@ -10,41 +10,60 @@ ARCHIVO_SALIDA = "lista_completa_etfs_morningstar.xlsx"
 def extraer_datos_morningstar():
     print(f"[{datetime.now()}] Iniciando navegador virtual Playwright...")
     with sync_playwright() as p:
-        # Lanzamos un navegador Chromium en modo headless (invisible)
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        # Configuración de pantalla para asegurar que el diseño no se rompa
+        context = browser.new_context(viewport={"width": 1280, "height": 800})
+        page = context.new_page()
+        page.set_extra_http_headers({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
         
         print(f"[{datetime.now()}] Cargando URL de Morningstar...")
         page.goto(URL_OBJETIVO, timeout=60000)
         
-        # Esperamos a que la tabla principal de datos se renderice en pantalla
-        page.wait_for_selector("table", timeout=30000)
-        time.sleep(5) # Margen de seguridad para carga de scripts internos
-        
-        print("Extrayendo filas de la tabla de ETFs...")
-        # Localizamos las tablas y procesamos el HTML visible
-        tablas = page.locator("table").all()
-        
-        if not tablas:
-            print("Error: No se encontraron tablas de datos en la página.")
-            browser.close()
-            return
-            
-        # Parseo automático de las estructuras de las tablas con Pandas
-        html_content = page.content()
-        lista_tablas = pd.read_html(html_content)
-        
-        # Consolidamos las tablas detectadas en un único DataFrame
-        df_etfs = lista_tablas[0] if lista_tablas else pd.DataFrame()
-        
-        if df_etfs.empty:
-            print("No se pudieron parsear filas estructuradas.")
-            browser.close()
-            return
+        # --- GESTIÓN DE COOKIES ---
+        try:
+            # Esperamos brevemente por si salta el banner de cookies
+            boton_cookies = page.locator("button:has-text('Aceptar'), button:has-text('Aceptar todo'), #onetrust-accept-btn-handler")
+            if boton_cookies.is_visible(timeout=5000):
+                boton_cookies.click()
+                print("Banner de cookies detectado y aceptado.")
+                time.sleep(2)
+        except Exception:
+            print("No se detectó banner de cookies obligatorio.")
 
-        print(f"Se han extraído con éxito {len(df_etfs)} ETFs de la sesión actual.")
+        print("Esperando la carga de los datos de la tabla...")
+        # Forzamos una espera genérica para dar margen a la API interna de la web
+        page.wait_for_load_state("networkidle", timeout=30000)
+        time.sleep(5)
         
-        # Guardar o consolidar con histórico previo
+        html_content = page.content()
+        
+        try:
+            lista_tablas = pd.read_html(html_content)
+            print(f"Tablas encontradas en la página: {len(lista_tablas)}")
+            
+            # Filtramos para quedarnos con la tabla que realmente contiene los ETFs
+            df_etfs = None
+            for tabla in lista_tablas:
+                if len(tabla) > 1 and ("Name" in tabla.columns or "Nombre" in str(tabla.columns) or "Ticker" in str(tabla.columns)):
+                    df_etfs = tabla
+                    break
+            
+            if df_etfs is None and lista_tablas:
+                df_etfs = lista_tablas[0] # Por defecto, la primera si tiene filas
+                
+        except Exception as e:
+            print(f"Error al procesar el HTML con Pandas: {e}")
+            browser.close()
+            exit(1)
+        
+        if df_etfs is None or df_etfs.empty:
+            print("Error: No se pudieron extraer datos estructurados de la tabla.")
+            browser.close()
+            exit(1)
+
+        print(f"Se han extraído con éxito {len(df_etfs)} filas de ETFs.")
+        
+        # Consolidar datos
         if os.path.exists(ARCHIVO_SALIDA):
             try:
                 df_existente = pd.read_excel(ARCHIVO_SALIDA)
@@ -55,7 +74,7 @@ def extraer_datos_morningstar():
             df_final = df_etfs
             
         df_final.to_excel(ARCHIVO_SALIDA, index=False)
-        print(f"¡Éxito! Archivo '{ARCHIVO_SALIDA}' guardado correctamente.")
+        print(f"¡Éxito! Archivo '{ARCHIVO_SALIDA}' guardado correctamente con {len(df_final)} registros.")
         browser.close()
 
 if __name__ == "__main__":
